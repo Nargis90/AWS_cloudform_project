@@ -22,3 +22,11 @@ Resources:
       Tags:
         - Key: secret1
           Value: dev
+  Mysecret2:
+    Type: "AWS::SecretsManager::Secret"
+    Properties:
+      Description: Nargis's secret
+      SecretString: '{"Username":"test"}'
+      Tags:
+        - Key: secret2
+          Value: prod
