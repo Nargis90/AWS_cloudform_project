@@ -30,3 +30,4 @@ Resources:
       Tags:
         - Key: secret2
           Value: prod
+#to test restore staged
