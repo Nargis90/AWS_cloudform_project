@@ -1,0 +1,272 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: This is a template for VPC
+  
+# Metadata:
+Mappings: 
+  AmiMapping: 
+    us-east-1: 
+      AmiId: ami-0c101f26f147fa7fd
+    us-west-2: 
+      AmiId: ami-0a70b9d193ae8a799
+    
+Parameters:
+  VpcCIDR:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: Enter the VPC CIDR
+
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    AllowedValues: 
+      - t3.micro
+      - t2.micro
+  
+Resources:
+  myVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      Tags:
+       - Key: owner
+         Value: Nargis-vpc
+
+  pubSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref myVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: "us-east-1a"
+      Tags:
+      - Key: owner
+        Value: nargis-pubsub1
+
+  pubSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref myVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: "us-east-1b"
+      Tags:
+      - Key: owner
+        Value: nargis-pubsub2
+
+  privSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref myVPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: "us-east-1a"
+      Tags:
+      - Key: owner
+        Value: nargis-privsub1
+
+  privSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref myVPC
+      CidrBlock: 10.0.4.0/24
+      AvailabilityZone: "us-east-1b"
+      Tags:
+      - Key: owner
+        Value: nargis-privsub2
+
+  myInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: owner
+        Value: nargis-igw
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref myVPC
+      InternetGatewayId: !Ref myInternetGateway
+
+  pubRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref myVPC
+      Tags:
+      - Key: owner
+        Value: nargis-rt
+
+  pubRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+       RouteTableId: !Ref pubRouteTable
+       DestinationCidrBlock: 0.0.0.0/0
+       GatewayId: !Ref myInternetGateway
+
+  pubSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref pubSubnet1
+      RouteTableId: !Ref pubRouteTable
+
+  pubSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref pubSubnet2
+      RouteTableId: !Ref pubRouteTable
+
+# # NAT for private subnets
+#   NATGateway:
+#    Type: AWS::EC2::NatGateway
+#    DependsOn: NATGatewayEIP
+#    Properties:
+#       AllocationId: !GetAtt NATGatewayEIP.AllocationId
+#       SubnetId: !Ref pubSubnet1
+#       Tags:
+#       - Key: owner
+#         Value: nargis-nat
+# # ELASTIC IP
+#   NATGatewayEIP:
+#    Type: AWS::EC2::EIP
+#    DependsOn: myVPC
+#    Properties:
+#       Domain: vpc
+
+# #PRIVATE ROUTING
+#   PrivateRouteTable:
+#     Type: AWS::EC2::RouteTable
+#     Properties:
+#       VpcId: !Ref myVPC
+#       Tags:
+#       - Key: owner
+#         Value: nargis
+ 
+#   RouteNATGateway:
+#    DependsOn: NATGateway
+#    Type: AWS::EC2::Route
+#    Properties:
+#       RouteTableId: !Ref PrivateRouteTable
+#       DestinationCidrBlock: '0.0.0.0/0'
+#       NatGatewayId: !Ref NATGateway
+
+#   PrivateSubnet1RouteTableAssociation:
+#     Type: AWS::EC2::SubnetRouteTableAssociation
+#     Properties:
+#       SubnetId: !Ref privSubnet1
+#       RouteTableId: !Ref PrivateRouteTable
+
+#   PrivateSubnet2RouteTableAssociation:
+#     Type: AWS::EC2::SubnetRouteTableAssociation
+#     Properties:
+#       SubnetId: !Ref privSubnet2
+#       RouteTableId: !Ref PrivateRouteTable
+
+  InstantSecurityGroup:  
+    Type: AWS::EC2::SecurityGroup
+    DeletionPolicy: Delete
+    Properties:
+      GroupName: nargis-CloudFormation-sg
+      GroupDescription: Allow SSH and HTTP
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        SourceSecurityGroupId:
+          Fn::GetAtt:
+          - ELBSecurityGroup
+          - GroupId
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: owner
+          Value: nargis-sg 
+  
+  # Target Group for the ALB
+  MyTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref myVPC
+      Targets: []  # Initially empty, filled by ASG
+  
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref MyTargetGroup
+      LoadBalancerArn: !Ref MyALB
+      Port: 80
+      Protocol: HTTP
+  
+  MyALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Subnets: [!Ref pubSubnet1, !Ref pubSubnet2]
+      SecurityGroups: 
+        - !GetAtt InstantSecurityGroup.GroupId
+      
+  MylaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: MyLaunchTemplate
+      LaunchTemplateData: 
+        ImageId: !FindInMap [ AmiMapping, !Ref "AWS::Region", AmiId ]
+        InstanceType: !Ref InstanceType
+        NetworkInterfaces: 
+          - DeviceIndex: 0
+            AssociatePublicIpAddress: true
+            Groups:
+              - !Ref InstantSecurityGroup            
+      SecurityGroupIds: !Ref InstantSecurityGroup    
+      TagSpecifications:
+        - ResourceType: launch-template     
+      UserData: 
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install httpd -y
+          systemctl start httpd
+          systemctl enable httpd
+          echo "<h1>Welcome to My Apache Web Server! My name is Nargis</h1>" > /var/www/html/index.html
+  
+    # Auto Scaling Group
+  MyASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref MyLaunchTemplate
+        Version: "Latest"  # Use the latest version of the Launch Template
+      MaxSize: '3'
+      MinSize: '1'
+      DesiredCapacity: 1
+      VPCZoneIdentifier:
+        - !Ref privSubnet1
+        - !Ref privSubnet2
+      TargetGroupARNs: 
+        -!Ref MyTargetGroup
+      
+Outputs: 
+  ALBEndpoint: 
+    Description: URL of the Application Load Balancer 
+    Value: !GetAtt MyALB.DNSName
+
+  
+
+        
+      
+
+        
+
+        
+
+      
+    # Outputs:
+      

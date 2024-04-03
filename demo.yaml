@@ -1,0 +1,24 @@
+Parameters:
+  Versioning:
+    Type: String
+    AllowedValues:
+      - Suspended
+      - Enabled
+  BucketName:
+    Type: String
+    Default: demo-temirkulova-nargis
+Resources:
+  MyS3Bucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref BucketName
+      VersioningConfiguration:
+        Status: !Ref Versioning
+  Mysecret:
+    Type: "AWS::SecretsManager::Secret"
+    Properties:
+      Description: Nargis's secret
+      SecretString: '{"Username":"test"}'
+      Tags:
+        - Key: secret1
+          Value: dev
